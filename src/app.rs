@@ -65,6 +65,7 @@ impl App {
     }
 
     /// 재생 중인지 확인
+    #[allow(dead_code)]
     pub fn is_playing(&self) -> bool {
         self.track.state == PlayerState::Playing
     }
