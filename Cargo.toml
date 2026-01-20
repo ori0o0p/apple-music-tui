@@ -2,6 +2,14 @@
 name = "apple-music-tui"
 version = "0.1.0"
 edition = "2024"
+authors = ["ori0o0p"]
+description = "A TUI remote controller for macOS Music.app"
+license = "MIT"
+repository = "https://github.com/ori0o0p/apple-music-tui"
+homepage = "https://github.com/ori0o0p/apple-music-tui"
+keywords = ["tui", "apple-music", "macos", "terminal", "music"]
+categories = ["command-line-utilities"]
+readme = "README.md"
 
 [dependencies]
 ratatui = "0.29"
