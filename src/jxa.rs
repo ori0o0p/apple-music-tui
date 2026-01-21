@@ -3,6 +3,7 @@
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -399,16 +400,29 @@ pub fn play_track_by_id(id: &str) -> Result<()> {
     if id.starts_with("music://") {
         // 1. 단축어(Shortcuts) 실행 시도
         // 사용자가 'AMT-Play'라는 단축어를 만들었다면 이것을 우선 사용
-        // 단축어 내용 예시: URL 입력 받음 -> URL 열기 -> 재생
-        let shortcut_status = std::process::Command::new("shortcuts")
-            .args(["run", "AMT-Play", "-i", id])
-            .output();
-            
-        // 단축어 실행 성공 시 종료
-        if let Ok(output) = shortcut_status {
-            if output.status.success() {
-                return Ok(());
+        // 단축어 내용 예시: stdin으로 URL 입력 받음 -> URL 열기 -> 재생
+        let child = std::process::Command::new("shortcuts")
+            .args(["run", "AMT-Play"])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+
+        let mut shortcut_success = false;
+        if let Ok(mut child) = child {
+            if let Some(mut stdin) = child.stdin.take() {
+                let _ = stdin.write_all(id.as_bytes());
             }
+            if let Ok(status) = child.wait() {
+                if status.success() {
+                    shortcut_success = true;
+                }
+            }
+        }
+
+        // 단축어 성공 시 종료
+        if shortcut_success {
+            return Ok(());
         }
 
         // 2. 단축어 실패 시 기본 open + 키보드 시뮬레이션
