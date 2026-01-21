@@ -30,7 +30,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     render_now_playing(frame, app, chunks[1]);
     render_progress_bar(frame, app, chunks[2]);
     render_volume_bar(frame, app, chunks[3]);
-    render_help(frame, chunks[4], app.mode);
+    render_help(frame, chunks[4], app);
 
     // 검색 모드일 때 팝업 렌더링
     if app.mode == AppMode::SearchInput {
@@ -179,8 +179,8 @@ fn render_volume_bar(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 /// 도움말 렌더링
-fn render_help(frame: &mut Frame, area: Rect, mode: AppMode) {
-    let help_text = match mode {
+fn render_help(frame: &mut Frame, area: Rect, app: &App) {
+    let help_text = match app.mode {
         AppMode::Normal => vec![
             Span::styled(" ␣ ", Style::default().fg(Color::Yellow)),
             Span::raw("Play/Pause  "),
@@ -201,14 +201,20 @@ fn render_help(frame: &mut Frame, area: Rect, mode: AppMode) {
             Span::styled("Esc ", Style::default().fg(Color::Yellow)),
             Span::raw("Cancel"),
         ],
-        AppMode::SearchResults => vec![
-            Span::styled(" ↑/↓ ", Style::default().fg(Color::Yellow)),
-            Span::raw("Move  "),
-            Span::styled("Enter ", Style::default().fg(Color::Yellow)),
-            Span::raw("Play  "),
-            Span::styled("Esc ", Style::default().fg(Color::Yellow)),
-            Span::raw("Cancel"),
-        ],
+        AppMode::SearchResults => {
+            let action_label = match app.search_mode {
+                SearchMode::Library => "Play  ",
+                SearchMode::AppleMusic => "Open in Music  ",
+            };
+            vec![
+                Span::styled(" ↑/↓ ", Style::default().fg(Color::Yellow)),
+                Span::raw("Move  "),
+                Span::styled("Enter ", Style::default().fg(Color::Yellow)),
+                Span::raw(action_label),
+                Span::styled("Esc ", Style::default().fg(Color::Yellow)),
+                Span::raw("Cancel"),
+            ]
+        },
     };
 
     let help = Paragraph::new(Line::from(help_text))
