@@ -1,6 +1,6 @@
 //! UI 렌더링 모듈
 
-use crate::app::{App, AppMode};
+use crate::app::{App, AppMode, SearchMode};
 use crate::jxa::PlayerState;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -196,6 +196,8 @@ fn render_help(frame: &mut Frame, area: Rect, mode: AppMode) {
         AppMode::SearchInput => vec![
             Span::styled(" Enter ", Style::default().fg(Color::Yellow)),
             Span::raw("Search  "),
+            Span::styled(" Tab ", Style::default().fg(Color::Yellow)),
+            Span::raw("Switch Source  "),
             Span::styled("Esc ", Style::default().fg(Color::Yellow)),
             Span::raw("Cancel"),
         ],
@@ -223,9 +225,14 @@ fn render_search_input(frame: &mut Frame, app: &App) {
 
     frame.render_widget(Clear, input_area); // 배경 지우기
 
+    let title = match app.search_mode {
+        SearchMode::Library => " Search Library (Tab to switch) ",
+        SearchMode::AppleMusic => " Search Apple Music (Tab to switch) ",
+    };
+
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(" Search Library ")
+        .title(title)
         .border_style(Style::default().fg(Color::Yellow));
 
     let input = Paragraph::new(app.search_query.as_str())
@@ -261,8 +268,13 @@ fn render_search_results(frame: &mut Frame, app: &mut App) {
     let mut state = ListState::default();
     state.select(Some(app.search_result_index));
 
+    let title = match app.search_mode {
+        SearchMode::Library => " Search Results (Library) ",
+        SearchMode::AppleMusic => " Search Results (Apple Music) ",
+    };
+
     let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title(" Search Results "))
+        .block(Block::default().borders(Borders::ALL).title(title))
         .highlight_style(Style::default().fg(Color::Black).bg(Color::Yellow).add_modifier(Modifier::BOLD))
         .highlight_symbol(">> ");
 

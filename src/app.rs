@@ -13,6 +13,15 @@ pub enum AppMode {
     SearchResults,
 }
 
+
+/// 검색 소스 모드
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum SearchMode {
+    #[default]
+    Library,
+    AppleMusic,
+}
+
 /// 애플리케이션 상태
 pub struct App {
     /// 현재 재생 중인 트랙 정보
@@ -37,6 +46,8 @@ pub struct App {
     pub search_results: Vec<SearchResult>,
     /// 검색 결과 선택 인덱스
     pub search_result_index: usize,
+    /// 검색 소스 모드
+    pub search_mode: SearchMode,
 }
 
 impl App {
@@ -56,6 +67,7 @@ impl App {
             search_query: String::new(),
             search_results: Vec::new(),
             search_result_index: 0,
+            search_mode: SearchMode::Library,
         }
     }
 
@@ -130,18 +142,29 @@ impl App {
 
     /// 검색 수행
     pub fn perform_search(&mut self) {
-        if let Ok(results) = jxa::search_library(&self.search_query) {
+        let results = match self.search_mode {
+            SearchMode::Library => jxa::search_library(&self.search_query),
+            SearchMode::AppleMusic => jxa::search_apple_music(&self.search_query),
+        };
+
+        if let Ok(results) = results {
             self.search_results = results;
             self.search_result_index = 0;
             if !self.search_results.is_empty() {
                 self.mode = AppMode::SearchResults;
-            } else {
-                // 결과 없음 모드는 따로 없으므로 Input 모드 유지 또는 알림
             }
         }
     }
 
-    /// 검색 결과 선택 위로 이동
+    /// 검색 소스 토글
+    pub fn toggle_search_mode(&mut self) {
+        self.search_mode = match self.search_mode {
+            SearchMode::Library => SearchMode::AppleMusic,
+            SearchMode::AppleMusic => SearchMode::Library,
+        };
+    }
+
+    /// 검색 결과 선택 및 재생
     pub fn search_play_selection(&mut self) {
         if let Some(result) = self.search_results.get(self.search_result_index) {
             let _ = jxa::play_track_by_id(&result.id);
@@ -166,4 +189,5 @@ impl App {
         }
     }
 }
+
 

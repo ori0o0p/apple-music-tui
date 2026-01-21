@@ -65,6 +65,11 @@ fn handle_search_input_mode(app: &mut App, key: KeyEvent) {
             app.search_query.push(c);
         }
         
+        // 검색 모드 전환 (Tab)
+        KeyCode::Tab => {
+            app.toggle_search_mode();
+        }
+
         _ => {}
     }
 }

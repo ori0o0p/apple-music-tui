@@ -334,20 +334,83 @@ pub fn search_library(query: &str) -> Result<Vec<SearchResult>> {
     Ok(search_results)
 }
 
-/// 특정 ID(persistentID)의 트랙 재생
-pub fn play_track_by_id(id: &str) -> Result<()> {
-    let script = format!(r#"
-        const music = Application("Music");
-        try {{
-            const library = music.libraryPlaylists[0];
-            const tracks = library.tracks.whose({{persistentID: "{id}"}});
-            
-            if (tracks.length > 0) {{
-                tracks[0].play();
-            }}
-        }} catch(e) {{}}
-    "#);
+
+/// Apple Music 카탈로그 검색 (iTunes Search API)
+pub fn search_apple_music(query: &str) -> Result<Vec<SearchResult>> {
+    let encoded_query = urlencoding(query);
+    let url = format!("https://itunes.apple.com/search?term={}&entity=song&limit=20&country=US", encoded_query); // country=KR? US가 안전
+
+    let output = std::process::Command::new("curl")
+        .args(["-s", &url])
+        .output()
+        .context("curl 실행 실패")?;
+
+    if !output.status.success() {
+        return Ok(Vec::new());
+    }
+
+    let response = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&response).unwrap_or(serde_json::json!({}));
     
-    run_jxa(&script)?;
+    let mut results = Vec::new();
+    
+    if let Some(items) = json["results"].as_array() {
+        for item in items {
+            let name = item["trackName"].as_str().unwrap_or("Unknown").to_string();
+            let artist = item["artistName"].as_str().unwrap_or("Unknown").to_string();
+            let album = item["collectionName"].as_str().unwrap_or("Unknown").to_string();
+            
+            // trackViewUrl 또는 ID 조합
+            // 재생을 위해서는 music:// 스킴 사용
+            // 예: https://music.apple.com/us/album/omg/1659513441?i=1659513445
+            // -> music://music.apple.com/us/album/omg/1659513441?i=1659513445
+            
+            let track_view_url = item["trackViewUrl"].as_str().unwrap_or("");
+            let id = if !track_view_url.is_empty() {
+                track_view_url.replace("https://", "music://")
+            } else {
+                // URL이 없으면 ID로 조합 시도 (collectionId, trackId)
+                let collection_id = item["collectionId"].as_u64().unwrap_or(0);
+                let track_id = item["trackId"].as_u64().unwrap_or(0);
+                format!("music://music.apple.com/song/{}?i={}", collection_id, track_id)
+            };
+
+            results.push(SearchResult {
+                name,
+                artist,
+                album,
+                id,
+            });
+        }
+    }
+
+    Ok(results)
+}
+
+/// 트랙 재생 (ID 또는 Apple Music URL)
+pub fn play_track_by_id(id: &str) -> Result<()> {
+    if id.starts_with("music://") {
+        // Apple Music URL이면 open 명령어로 실행
+        std::process::Command::new("open")
+            .arg(id)
+            .output()
+            .context("open 실행 실패")?;
+    } else {
+        // 로컬 라이브러리 ID면 JXA로 재생
+        let script = format!(r#"
+            const music = Application("Music");
+            try {{
+                const library = music.libraryPlaylists[0];
+                const tracks = library.tracks.whose({{persistentID: "{id}"}});
+                
+                if (tracks.length > 0) {{
+                    tracks[0].play();
+                }}
+            }} catch(e) {{}}
+        "#);
+        
+        run_jxa(&script)?;
+    }
     Ok(())
 }
+
