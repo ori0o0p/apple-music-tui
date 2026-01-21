@@ -1,15 +1,16 @@
 //! UI 렌더링 모듈
 
-use crate::app::App;
+use crate::app::{App, AppMode};
 use crate::jxa::PlayerState;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Gauge, Paragraph},
+    widgets::{Block, Borders, Gauge, Paragraph, Clear, List, ListItem, ListState},
     Frame,
 };
 use ratatui_image::StatefulImage;
+use unicode_width::UnicodeWidthStr;
 
 /// UI 렌더링
 pub fn render(frame: &mut Frame, app: &mut App) {
@@ -29,7 +30,14 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     render_now_playing(frame, app, chunks[1]);
     render_progress_bar(frame, app, chunks[2]);
     render_volume_bar(frame, app, chunks[3]);
-    render_help(frame, chunks[4]);
+    render_help(frame, chunks[4], app.mode);
+
+    // 검색 모드일 때 팝업 렌더링
+    if app.mode == AppMode::SearchInput {
+        render_search_input(frame, app);
+    } else if app.mode == AppMode::SearchResults {
+        render_search_results(frame, app);
+    }
 }
 
 /// 타이틀 렌더링
@@ -171,19 +179,115 @@ fn render_volume_bar(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 /// 도움말 렌더링
-fn render_help(frame: &mut Frame, area: Rect) {
-    let help = Paragraph::new(Line::from(vec![
-        Span::styled(" ␣ ", Style::default().fg(Color::Yellow)),
-        Span::raw("Play/Pause  "),
-        Span::styled("←/→ ", Style::default().fg(Color::Yellow)),
-        Span::raw("Prev/Next  "),
-        Span::styled("↑/↓ ", Style::default().fg(Color::Yellow)),
-        Span::raw("Volume  "),
-        Span::styled("q ", Style::default().fg(Color::Red)),
-        Span::raw("Quit"),
-    ]))
-    .block(Block::default().borders(Borders::ALL));
+fn render_help(frame: &mut Frame, area: Rect, mode: AppMode) {
+    let help_text = match mode {
+        AppMode::Normal => vec![
+            Span::styled(" ␣ ", Style::default().fg(Color::Yellow)),
+            Span::raw("Play/Pause  "),
+            Span::styled("←/→ ", Style::default().fg(Color::Yellow)),
+            Span::raw("Prev/Next  "),
+            Span::styled("↑/↓ ", Style::default().fg(Color::Yellow)),
+            Span::raw("Volume  "),
+            Span::styled("/ ", Style::default().fg(Color::Yellow)),
+            Span::raw("Search  "),
+            Span::styled("q ", Style::default().fg(Color::Red)),
+            Span::raw("Quit"),
+        ],
+        AppMode::SearchInput => vec![
+            Span::styled(" Enter ", Style::default().fg(Color::Yellow)),
+            Span::raw("Search  "),
+            Span::styled("Esc ", Style::default().fg(Color::Yellow)),
+            Span::raw("Cancel"),
+        ],
+        AppMode::SearchResults => vec![
+            Span::styled(" ↑/↓ ", Style::default().fg(Color::Yellow)),
+            Span::raw("Move  "),
+            Span::styled("Enter ", Style::default().fg(Color::Yellow)),
+            Span::raw("Play  "),
+            Span::styled("Esc ", Style::default().fg(Color::Yellow)),
+            Span::raw("Cancel"),
+        ],
+    };
+
+    let help = Paragraph::new(Line::from(help_text))
+        .block(Block::default().borders(Borders::ALL));
     frame.render_widget(help, area);
+}
+
+/// 검색 입력창 렌더링 (화면 중앙 팝업)
+fn render_search_input(frame: &mut Frame, app: &App) {
+    let area = centered_rect(60, 20, frame.area()); 
+    let height = 3;
+    let y_pos = area.y + (area.height - height) / 2;
+    let input_area = Rect::new(area.x, y_pos, area.width, height);
+
+    frame.render_widget(Clear, input_area); // 배경 지우기
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Search Library ")
+        .border_style(Style::default().fg(Color::Yellow));
+
+    let input = Paragraph::new(app.search_query.as_str())
+        .block(block)
+        .style(Style::default().fg(Color::White));
+
+    frame.render_widget(input, input_area);
+
+    // 커서 표시 (width() 사용을 위해 unicode-width crate 필요)
+    let cursor_x = input_area.x + 1 + app.search_query.width() as u16;
+    let cursor_y = input_area.y + 1;
+    frame.set_cursor(cursor_x, cursor_y); 
+}
+
+/// 검색 결과 리스트 렌더링 (화면 중앙 팝업)
+fn render_search_results(frame: &mut Frame, app: &mut App) {
+    let area = centered_rect(60, 50, frame.area());
+    frame.render_widget(Clear, area);
+
+    let items: Vec<ListItem> = app.search_results
+        .iter()
+        .map(|track| {
+            let content = Line::from(vec![
+                Span::styled(format!("{} - ", track.name), Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(format!("{} ", track.artist)),
+                Span::styled(format!("({})", track.album), Style::default().fg(Color::DarkGray)),
+            ]);
+            ListItem::new(content)
+        })
+        .collect();
+
+    // ListState 생성 (선택된 인덱스 설정)
+    let mut state = ListState::default();
+    state.select(Some(app.search_result_index));
+
+    let list = List::new(items)
+        .block(Block::default().borders(Borders::ALL).title(" Search Results "))
+        .highlight_style(Style::default().fg(Color::Black).bg(Color::Yellow).add_modifier(Modifier::BOLD))
+        .highlight_symbol(">> ");
+
+    frame.render_stateful_widget(list, area, &mut state);
+}
+
+/// Helper: 화면 중앙에 특정 크기의 Rect 생성
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
 }
 
 /// 초를 mm:ss 형식으로 변환
@@ -193,4 +297,3 @@ fn format_time(seconds: f64) -> String {
     let secs = total_secs % 60;
     format!("{:02}:{:02}", mins, secs)
 }
-

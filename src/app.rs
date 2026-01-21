@@ -1,8 +1,17 @@
 //! 앱 상태 관리 모듈
 
-use crate::jxa::{self, PlayerState, TrackInfo};
+use crate::jxa::{self, PlayerState, TrackInfo, SearchResult};
 use image::ImageReader;
 use ratatui_image::{picker::Picker, protocol::StatefulProtocol};
+
+/// 애플리케이션 모드
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum AppMode {
+    #[default]
+    Normal,
+    SearchInput,
+    SearchResults,
+}
 
 /// 애플리케이션 상태
 pub struct App {
@@ -12,12 +21,22 @@ pub struct App {
     pub volume: u8,
     /// 앱 실행 상태
     pub running: bool,
+    /// 현재 앱 모드
+    pub mode: AppMode,
+    
     /// 이미지 프로토콜 Picker (터미널 그래픽스 프로토콜 감지용)
     pub picker: Picker,
     /// 현재 아트워크 이미지 프로토콜 (렌더링용)
     pub artwork: Option<StatefulProtocol>,
     /// 마지막으로 로드한 트랙 이름 (변경 감지용)
     last_track_name: String,
+
+    /// 검색 쿼리
+    pub search_query: String,
+    /// 검색 결과
+    pub search_results: Vec<SearchResult>,
+    /// 검색 결과 선택 인덱스
+    pub search_result_index: usize,
 }
 
 impl App {
@@ -30,9 +49,13 @@ impl App {
             track: TrackInfo::default(),
             volume: 50,
             running: true,
+            mode: AppMode::Normal,
             picker,
             artwork: None,
             last_track_name: String::new(),
+            search_query: String::new(),
+            search_results: Vec::new(),
+            search_result_index: 0,
         }
     }
 
@@ -103,6 +126,44 @@ impl App {
     #[allow(dead_code)]
     pub fn is_playing(&self) -> bool {
         self.track.state == PlayerState::Playing
+    }
+
+    /// 검색 수행
+    pub fn perform_search(&mut self) {
+        if let Ok(results) = jxa::search_library(&self.search_query) {
+            self.search_results = results;
+            self.search_result_index = 0;
+            if !self.search_results.is_empty() {
+                self.mode = AppMode::SearchResults;
+            } else {
+                // 결과 없음 모드는 따로 없으므로 Input 모드 유지 또는 알림
+            }
+        }
+    }
+
+    /// 검색 결과 선택 위로 이동
+    pub fn search_play_selection(&mut self) {
+        if let Some(result) = self.search_results.get(self.search_result_index) {
+            let _ = jxa::play_track_by_id(&result.id);
+            // 재생 후 검색 모드 종료
+            self.mode = AppMode::Normal;
+            self.search_query.clear();
+            self.search_results.clear();
+        }
+    }
+
+    /// 검색 결과 선택 위로 이동
+    pub fn search_select_prev(&mut self) {
+        if self.search_result_index > 0 {
+            self.search_result_index -= 1;
+        }
+    }
+
+    /// 검색 결과 선택 아래로 이동
+    pub fn search_select_next(&mut self) {
+        if self.search_result_index < self.search_results.len().saturating_sub(1) {
+            self.search_result_index += 1;
+        }
     }
 }
 

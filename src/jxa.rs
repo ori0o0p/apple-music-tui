@@ -285,3 +285,69 @@ fn extract_artwork_url(json: &str) -> Option<String> {
     None
 }
 
+
+/// 검색 결과
+#[derive(Debug, Clone, Deserialize)]
+pub struct SearchResult {
+    pub name: String,
+    pub artist: String,
+    pub album: String,
+    pub id: String, // persistentID
+}
+
+/// 라이브러리 검색
+pub fn search_library(query: &str) -> Result<Vec<SearchResult>> {
+    // 따옴표 escaping
+    let safe_query = query.replace('"', "\\\"");
+    
+    let script = format!(r#"
+        const music = Application("Music");
+        const library = music.libraryPlaylists[0];
+        
+        try {{
+            // 검색 수행
+            const results = music.search(library, {{for: "{safe_query}"}});
+            
+            // 결과 매핑 (최대 20개까지만)
+            let output = [];
+            const limit = Math.min(results.length, 20);
+            
+            for (let i = 0; i < limit; i++) {{
+                const track = results[i];
+                output.push({{
+                    name: track.name(),
+                    artist: track.artist(),
+                    album: track.album(),
+                    id: track.persistentID()
+                }});
+            }}
+            
+            JSON.stringify(output);
+        }} catch(e) {{
+            JSON.stringify([]);
+        }}
+    "#);
+
+    let result = run_jxa(&script)?;
+    let search_results: Vec<SearchResult> = serde_json::from_str(&result).unwrap_or_default();
+    
+    Ok(search_results)
+}
+
+/// 특정 ID(persistentID)의 트랙 재생
+pub fn play_track_by_id(id: &str) -> Result<()> {
+    let script = format!(r#"
+        const music = Application("Music");
+        try {{
+            const library = music.libraryPlaylists[0];
+            const tracks = library.tracks.whose({{persistentID: "{id}"}});
+            
+            if (tracks.length > 0) {{
+                tracks[0].play();
+            }}
+        }} catch(e) {{}}
+    "#);
+    
+    run_jxa(&script)?;
+    Ok(())
+}
