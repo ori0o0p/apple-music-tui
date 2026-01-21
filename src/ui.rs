@@ -97,26 +97,44 @@ fn render_track_info(frame: &mut Frame, app: &App, area: Rect) {
         PlayerState::Stopped => "⏹ Stopped",
     };
 
-    let text = vec![
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("  Title:  ", Style::default().fg(Color::DarkGray)),
-            Span::styled(&app.track.name, Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
-        ]),
-        Line::from(vec![
-            Span::styled("  Artist: ", Style::default().fg(Color::DarkGray)),
-            Span::styled(&app.track.artist, Style::default().fg(Color::Cyan)),
-        ]),
-        Line::from(vec![
-            Span::styled("  Album:  ", Style::default().fg(Color::DarkGray)),
-            Span::styled(&app.track.album, Style::default().fg(Color::Yellow)),
-        ]),
-        Line::from(""),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled(state_icon, Style::default().fg(Color::Green)),
-        ]),
-    ];
+    // Stopped 상태이고 트랙 정보가 없으면 안내 메시지 표시
+    let text = if app.track.state == PlayerState::Stopped && app.track.name.is_empty() {
+        vec![
+            Line::from(""),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("  Press ", Style::default().fg(Color::DarkGray)),
+                Span::styled("Space", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                Span::styled(" to start playback", Style::default().fg(Color::DarkGray)),
+            ]),
+            Line::from(""),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled(state_icon, Style::default().fg(Color::DarkGray)),
+            ]),
+        ]
+    } else {
+        vec![
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("  Title:  ", Style::default().fg(Color::DarkGray)),
+                Span::styled(&app.track.name, Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+            ]),
+            Line::from(vec![
+                Span::styled("  Artist: ", Style::default().fg(Color::DarkGray)),
+                Span::styled(&app.track.artist, Style::default().fg(Color::Cyan)),
+            ]),
+            Line::from(vec![
+                Span::styled("  Album:  ", Style::default().fg(Color::DarkGray)),
+                Span::styled(&app.track.album, Style::default().fg(Color::Yellow)),
+            ]),
+            Line::from(""),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled(state_icon, Style::default().fg(Color::Green)),
+            ]),
+        ]
+    };
 
     let paragraph = Paragraph::new(text);
     frame.render_widget(paragraph, area);

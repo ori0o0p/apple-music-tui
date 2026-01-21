@@ -26,6 +26,9 @@ async fn main() -> Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
+    // Music.app이 실행되지 않았으면 자동 실행
+    let _ = jxa::ensure_music_ready();
+
     // 앱 상태 초기화
     let mut app = App::new();
     

@@ -72,9 +72,71 @@ fn run_jxa(_script: &str) -> Result<String> {
     anyhow::bail!("이 앱은 macOS에서만 실행됩니다.")
 }
 
-/// 재생/일시정지 토글
+/// Music.app이 실행 중인지 확인
+pub fn is_music_running() -> bool {
+    let script = r#"
+        Application('System Events').processes.whose({name: 'Music'}).length > 0
+    "#;
+    run_jxa(script).map(|r| r == "true").unwrap_or(false)
+}
+
+/// Music.app 실행 (백그라운드)
+pub fn launch_music() -> Result<()> {
+    run_jxa("Application('Music').activate()")?;
+    // 잠시 대기 후 백그라운드로
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    run_jxa(r#"
+        Application('System Events').processes.byName('Music').windows[0].buttons[0].click()
+    "#).ok(); // 창 닫기 시도 (실패해도 무시)
+    Ok(())
+}
+
+/// Music.app 초기화 - 앱이 실행되지 않았으면 실행
+pub fn ensure_music_ready() -> Result<()> {
+    if !is_music_running() {
+        launch_music()?;
+    }
+    Ok(())
+}
+
+/// 라이브러리에서 재생 시작 (stopped 상태에서 호출)
+pub fn start_playback() -> Result<()> {
+    let script = r#"
+        const music = Application('Music');
+        // 라이브러리 플레이리스트에서 첫 번째 곡 재생
+        try {
+            const library = music.libraryPlaylists[0];
+            if (library && library.tracks.length > 0) {
+                library.tracks[0].play();
+                "ok";
+            } else {
+                "no_tracks";
+            }
+        } catch(e) {
+            "error";
+        }
+    "#;
+    run_jxa(script)?;
+    Ok(())
+}
+
+/// 재생/일시정지 토글 (stopped면 재생 시작)
 pub fn play_pause() -> Result<()> {
-    run_jxa("Application('Music').playpause()")?;
+    let script = r#"
+        const music = Application('Music');
+        if (music.playerState() === 'stopped') {
+            // stopped 상태면 라이브러리에서 재생 시작
+            try {
+                const library = music.libraryPlaylists[0];
+                if (library && library.tracks.length > 0) {
+                    library.tracks[0].play();
+                }
+            } catch(e) {}
+        } else {
+            music.playpause();
+        }
+    "#;
+    run_jxa(script)?;
     Ok(())
 }
 
