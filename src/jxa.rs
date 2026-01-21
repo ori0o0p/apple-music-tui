@@ -394,14 +394,52 @@ pub fn get_frontmost_application_name() -> Result<String> {
 }
 
 /// 트랙 재생 (ID 또는 Apple Music URL)
+/// 트랙 재생 (ID 또는 Apple Music URL)
 pub fn play_track_by_id(id: &str) -> Result<()> {
     if id.starts_with("music://") {
+        // 1. 단축어(Shortcuts) 실행 시도
+        // 사용자가 'AMT-Play'라는 단축어를 만들었다면 이것을 우선 사용
+        // 단축어 내용 예시: URL 입력 받음 -> URL 열기 -> 재생
+        let shortcut_status = std::process::Command::new("shortcuts")
+            .args(["run", "AMT-Play", "-i", id])
+            .output();
+            
+        // 단축어 실행 성공 시 종료
+        if let Ok(output) = shortcut_status {
+            if output.status.success() {
+                return Ok(());
+            }
+        }
+
+        // 2. 단축어 실패 시 기본 open + 키보드 시뮬레이션
+        // 현재 터미널 앱 이름 저장
+        let current_app = get_frontmost_application_name().unwrap_or_else(|_| "Terminal".to_string());
+        
         // Apple Music URL 실행 (포그라운드)
-        // 자동 재생 API가 없으므로 사용자가 직접 재생하도록 Music 앱을 띄워둠
         std::process::Command::new("open")
             .arg(id)
             .output()
             .context("open 실행 실패")?;
+            
+        // URL 로딩 대기 후 Space 키(재생/일시정지) 입력 시도 및 포커스 복귀
+        let current_app_clone = current_app.clone();
+        std::thread::spawn(move || {
+            // 로딩 대기 (1.5초)
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            
+            // Space 키 입력 (Music 앱이 포커스 된 상태여야 함)
+            let script = format!(r#"
+                const se = Application('System Events');
+                try {{
+                    // Space 키로 재생 토글 시도
+                    se.keystroke(' '); 
+                    delay(0.5);
+                    Application("{}").activate();
+                }} catch(e) {{}}
+            "#, current_app_clone);
+            
+            let _ = run_jxa(&script);
+        });
     } else {
         // 로컬 라이브러리 ID면 JXA로 재생
         let script = format!(r#"
