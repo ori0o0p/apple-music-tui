@@ -390,11 +390,20 @@ pub fn search_apple_music(query: &str) -> Result<Vec<SearchResult>> {
 /// 트랙 재생 (ID 또는 Apple Music URL)
 pub fn play_track_by_id(id: &str) -> Result<()> {
     if id.starts_with("music://") {
-        // Apple Music URL이면 open 명령어로 실행
+        // Apple Music URL이면 open -g 명령어로 백그라운드 실행 시도
         std::process::Command::new("open")
+            .arg("-g")
             .arg(id)
             .output()
-            .context("open 실행 실패")?;
+            .context("open -g 실행 실패")?;
+            
+        // URL 로딩 대기 후 재생 시도
+        // 별도 스레드에서 실행하여 UI 블로킹 방지
+        std::thread::spawn(|| {
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            // 재생 명령 전송 (현재 컨텍스트 재생)
+            let _ = run_jxa("Application('Music').play()");
+        });
     } else {
         // 로컬 라이브러리 ID면 JXA로 재생
         let script = format!(r#"
