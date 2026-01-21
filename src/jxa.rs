@@ -388,21 +388,40 @@ pub fn search_apple_music(query: &str) -> Result<Vec<SearchResult>> {
 }
 
 /// 트랙 재생 (ID 또는 Apple Music URL)
+/// 현재 활성 애플리케이션 이름 가져오기
+pub fn get_frontmost_application_name() -> Result<String> {
+    run_jxa("Application('System Events').processes.whose({frontmost: true})[0].name()")
+}
+
+/// 트랙 재생 (ID 또는 Apple Music URL)
 pub fn play_track_by_id(id: &str) -> Result<()> {
     if id.starts_with("music://") {
-        // Apple Music URL이면 open -g 명령어로 백그라운드 실행 시도
+        // 현재 터미널 앱 이름 저장
+        let current_app = get_frontmost_application_name().unwrap_or_else(|_| "Terminal".to_string());
+        
+        // Apple Music URL 실행 (포그라운드)
         std::process::Command::new("open")
-            .arg("-g")
             .arg(id)
             .output()
-            .context("open -g 실행 실패")?;
+            .context("open 실행 실패")?;
             
-        // URL 로딩 대기 후 재생 시도
-        // 별도 스레드에서 실행하여 UI 블로킹 방지
-        std::thread::spawn(|| {
+        // URL 로딩 대기 후 Enter 키 입력 시도 및 포커스 복귀
+        // 별도 스레드에서 실행
+        let current_app_clone = current_app.clone();
+        std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(1500));
-            // 재생 명령 전송 (현재 컨텍스트 재생)
-            let _ = run_jxa("Application('Music').play()");
+            
+            // Enter 키 입력 (Music 앱이 포커스 된 상태여야 함)
+            let script = format!(r#"
+                const se = Application('System Events');
+                try {{
+                    se.keystroke('\r'); // Enter
+                    delay(0.5);
+                    Application("{}").activate();
+                }} catch(e) {{}}
+            "#, current_app_clone);
+            
+            let _ = run_jxa(&script);
         });
     } else {
         // 로컬 라이브러리 ID면 JXA로 재생
@@ -422,4 +441,5 @@ pub fn play_track_by_id(id: &str) -> Result<()> {
     }
     Ok(())
 }
+
 
