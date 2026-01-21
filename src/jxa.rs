@@ -3,6 +3,7 @@
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
+use std::path::PathBuf;
 use std::process::Command;
 
 /// 플레이어 상태
@@ -141,3 +142,84 @@ pub fn get_current_track() -> Result<TrackInfo> {
         state: PlayerState::from(raw.state.as_str()),
     })
 }
+
+/// 현재 트랙의 아트워크를 iTunes Search API로 가져와 임시 파일에 저장합니다.
+/// 아트워크가 없거나 가져올 수 없으면 None을 반환합니다.
+pub fn get_artwork_path() -> Result<Option<PathBuf>> {
+    // 먼저 현재 트랙 정보 가져오기
+    let track = get_current_track()?;
+    
+    if track.name.is_empty() || track.artist.is_empty() {
+        return Ok(None);
+    }
+
+    // iTunes Search API로 아트워크 URL 검색
+    let search_term = format!("{} {}", track.artist, track.album);
+    let encoded_term = urlencoding(&search_term);
+    let api_url = format!(
+        "https://itunes.apple.com/search?term={}&entity=album&limit=1",
+        encoded_term
+    );
+
+    // curl로 API 호출
+    let output = std::process::Command::new("curl")
+        .args(["-s", &api_url])
+        .output()
+        .context("curl 실행 실패")?;
+
+    if !output.status.success() {
+        return Ok(None);
+    }
+
+    let response = String::from_utf8_lossy(&output.stdout);
+    
+    // JSON에서 artworkUrl100 추출
+    if let Some(artwork_url) = extract_artwork_url(&response) {
+        // 100x100을 600x600으로 변경하여 고해상도 이미지 가져오기
+        let hires_url = artwork_url.replace("100x100", "600x600");
+        
+        // 이미지 다운로드
+        let temp_path = std::env::temp_dir().join("apple_music_tui_artwork.jpg");
+        let download = std::process::Command::new("curl")
+            .args(["-s", "-o", temp_path.to_str().unwrap(), &hires_url])
+            .output()
+            .context("아트워크 다운로드 실패")?;
+
+        if download.status.success() && temp_path.exists() {
+            return Ok(Some(temp_path));
+        }
+    }
+
+    Ok(None)
+}
+
+/// URL 인코딩 (간단한 구현)
+fn urlencoding(s: &str) -> String {
+    let mut result = String::new();
+    for c in s.chars() {
+        match c {
+            'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' | '.' | '~' => result.push(c),
+            ' ' => result.push_str("%20"),
+            _ => {
+                for b in c.to_string().as_bytes() {
+                    result.push_str(&format!("%{:02X}", b));
+                }
+            }
+        }
+    }
+    result
+}
+
+/// JSON 응답에서 artworkUrl100 추출
+fn extract_artwork_url(json: &str) -> Option<String> {
+    // "artworkUrl100":"URL" 패턴 찾기
+    let marker = "\"artworkUrl100\":\"";
+    if let Some(start) = json.find(marker) {
+        let start_idx = start + marker.len();
+        if let Some(end) = json[start_idx..].find('"') {
+            return Some(json[start_idx..start_idx + end].to_string());
+        }
+    }
+    None
+}
+

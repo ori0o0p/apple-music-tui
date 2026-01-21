@@ -1,6 +1,8 @@
 //! 앱 상태 관리 모듈
 
 use crate::jxa::{self, PlayerState, TrackInfo};
+use image::ImageReader;
+use ratatui_image::{picker::Picker, protocol::StatefulProtocol};
 
 /// 애플리케이션 상태
 pub struct App {
@@ -10,15 +12,27 @@ pub struct App {
     pub volume: u8,
     /// 앱 실행 상태
     pub running: bool,
+    /// 이미지 프로토콜 Picker (터미널 그래픽스 프로토콜 감지용)
+    pub picker: Picker,
+    /// 현재 아트워크 이미지 프로토콜 (렌더링용)
+    pub artwork: Option<StatefulProtocol>,
+    /// 마지막으로 로드한 트랙 이름 (변경 감지용)
+    last_track_name: String,
 }
 
 impl App {
     /// 새로운 App 인스턴스 생성
     pub fn new() -> Self {
+        // 터미널 그래픽스 프로토콜 감지 (실패 시 halfblocks 폴백)
+        let picker = Picker::from_query_stdio().unwrap_or_else(|_| Picker::from_fontsize((8, 16)));
+        
         Self {
             track: TrackInfo::default(),
             volume: 50,
             running: true,
+            picker,
+            artwork: None,
+            last_track_name: String::new(),
         }
     }
 
@@ -52,10 +66,31 @@ impl App {
     /// 트랙 정보 업데이트 (폴링)
     pub fn update(&mut self) {
         if let Ok(track) = jxa::get_current_track() {
+            // 트랙이 변경되었는지 확인
+            let track_changed = track.name != self.last_track_name;
             self.track = track;
+            
+            // 트랙이 변경되었으면 아트워크 업데이트
+            if track_changed {
+                self.last_track_name = self.track.name.clone();
+                self.update_artwork();
+            }
         }
         if let Ok(vol) = jxa::get_volume() {
             self.volume = vol;
+        }
+    }
+
+    /// 아트워크 업데이트
+    fn update_artwork(&mut self) {
+        self.artwork = None;
+        
+        if let Ok(Some(path)) = jxa::get_artwork_path() {
+            if let Ok(reader) = ImageReader::open(&path) {
+                if let Ok(dyn_img) = reader.decode() {
+                    self.artwork = Some(self.picker.new_resize_protocol(dyn_img));
+                }
+            }
         }
     }
 
@@ -70,3 +105,4 @@ impl App {
         self.track.state == PlayerState::Playing
     }
 }
+
